@@ -1,5 +1,5 @@
 public class StudentPlayer extends Player{
-    private int MAX_DEPTH = 3;
+    private int MAX_DEPTH = 2;
     private int enemyIndex;
 
     public StudentPlayer(int playerIndex, int[] boardSize, int nToConnect) {
@@ -9,54 +9,72 @@ public class StudentPlayer extends Player{
     @Override
     public int step(Board board) {
         enemyIndex = board.getLastPlayerIndex();
-        return 0;
+        return maxScore(board, -Integer.MAX_VALUE, Integer.MAX_VALUE, 0)[0];
     }
 
-    private boolean endState(Board board){
+    private int longestCon(Board board, int index){
         int usedTiles = 0;
+        int longestCon = 0;
         int[][] state = board.getState();
         for(int row = 0; row < boardSize[0]; ++row){
             for(int col = 0; col < boardSize[1]; ++col){
-                if(isNDiagonally(row, col, playerIndex, 4, state) || isNSkewDiagonally(row, col, playerIndex, 4, state) 
-                    || isNInACol(row, col, playerIndex, 4, state) || isNInARow(row, col, playerIndex, 4, state)) return true;
-                if(isNDiagonally(row, col, enemyIndex, 4, state) || isNSkewDiagonally(row, col, enemyIndex, 4, state) 
-                    || isNInACol(row, col, enemyIndex, 4, state) || isNInARow(row, col, enemyIndex, 4, state)) return true;
-                if(state[row][col] != 0) usedTiles++;    
-            }   
+                for(int con = 1; con < 5; con++){
+                    if(isNDiagonally(row, col, index, con, state) || isNSkewDiagonally(row, col, index, con, state) 
+                        || isNInACol(row, col, index, con, state) || isNInARow(row, col, index, con, state)) if(con > longestCon) longestCon = con;
+                    if(state[row][col] != 0) usedTiles++;    
+                }
+            }
         }
 
-        if(usedTiles == boardSize[0] * boardSize[1]) return true;
-        
-        return false;
+        if(usedTiles == boardSize[0] * boardSize[1]) return -1;
+
+        return longestCon;
     }
 
     private int utility(Board board){
-        return 0;
+        int value = 0;
+        int longestPlayer = longestCon(board, playerIndex), longestEnemy = longestCon(board, enemyIndex);
+
+        if(board.getLastPlayerIndex() == playerIndex){
+            if(longestPlayer == 4 && longestEnemy < 3) value += 300;
+        }else{
+            if(longestEnemy == 4) value -= 1000;
+        }
+
+
+        return value;
     }
 
-    private int[][][] getStates(Board board){
-        return new int[1][1][1];
-    }
-
-    private int minScore(Board board, int alfa, int beta, int depth){
-        if(endState(board) || depth == MAX_DEPTH) return utility(board);
-        int v = Integer.MAX_VALUE;
-        for(int[][] nextState: getStates(board)){
-            v = Math.min(v, maxScore(board, alfa, beta, depth + 1));
-            if(v <= alfa) return v;
-            beta = Math.min(v, beta);
+    private int[] minScore(Board board, int alfa, int beta, int depth){
+        int val = board.getLastPlayerColumn();
+        if(longestCon(board, playerIndex) == 4 || longestCon(board, enemyIndex) == 4 || depth == MAX_DEPTH) return new int[]{board.getLastPlayerColumn(), utility(board)};
+        int[] v = new int[]{1 ,Integer.MAX_VALUE};
+        for(int col: board.getValidSteps()){
+            Board testBoard = new Board(board);
+            testBoard.step(enemyIndex, col);
+            int[] maxScr = maxScore(testBoard, alfa, beta, depth + 1);
+            if(v[1] > maxScr[1]){
+                v = maxScr;
+            }
+            if(v[1] <= alfa) return v;
+            beta = Math.min(v[1], beta);
         }
 
         return v;
     }
 
-    private int maxScore(Board board, int alfa, int beta, int depth){
-        if (endState(board) || depth == MAX_DEPTH) return utility(board);
-        int v = -Integer.MAX_VALUE;
-        for(int[][] nextState: getStates(board)){
-            v = Math.max(v, minScore(board, alfa, beta, depth + 1));
-            if(v >= beta) return v;
-            alfa = Math.max(alfa, v);
+    private int[] maxScore(Board board, int alfa, int beta, int depth){
+        if (longestCon(board, playerIndex) == 4 || longestCon(board, enemyIndex) == 4 || depth == MAX_DEPTH) return new int[]{board.getLastPlayerColumn(), utility(board)};
+        int[] v = new int[]{1, -Integer.MAX_VALUE};
+        for(int col: board.getValidSteps()){
+            Board testBoard = new Board(board);
+            testBoard.step(playerIndex, col);
+            int[] minScr = minScore(testBoard, alfa, beta, depth + 1);
+            if(v[1] < minScr[1]){
+                v = minScr;
+            }
+            if(v[1] >= beta) return v;
+            alfa = Math.max(alfa, v[1]);
         }
 
         return v;
@@ -67,7 +85,14 @@ public class StudentPlayer extends Player{
 
         int startCol = Math.max(0, col - nToConnect + 1);
         int endCol = Math.min(boardSize[1], col + nToConnect);
+        boolean badVal = false;
+    
+        if(startCol == 0 && endCol != boardSize[1]) badVal = state[row][endCol] != 0;
+        if(endCol == boardSize[1] && startCol != 0) badVal = state[row][startCol - 1] != 0;
+        if(startCol != 0 && endCol != boardSize[1]) badVal = state[row][startCol - 1] != 0 && state[row][endCol] != 0;
 
+        if(badVal) return false;
+        if(startCol != 0 && endCol != boardSize[1] && (state[row][startCol - 1] != 0 && state[row][endCol] != 0)) return false;
         for (int c = startCol; c < endCol; c++) {
             if (state[row][c] == playerIndex) {
                 nInARow++;
@@ -85,6 +110,14 @@ public class StudentPlayer extends Player{
 
         int startRow = Math.max(0, row - nToConnect + 1);
         int endRow = Math.min(boardSize[0], row + nToConnect);
+        
+        boolean badVal = false;
+    
+        if(startRow == 0 && endRow != boardSize[0]) badVal = state[endRow][col] != 0;
+        if(endRow == boardSize[0] && startRow != 0) badVal = state[startRow - 1][col] != 0;
+        if(startRow != 0 && endRow != boardSize[0]) badVal = state[startRow - 1][col] != 0 && state[endRow][col] != 0;
+
+        if(badVal) return false;
 
         for (int r = startRow; r < endRow; r++) {
             if (state[r][col] == playerIndex) {
